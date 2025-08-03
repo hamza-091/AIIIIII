@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Phone, PhoneCall, Clock, Activity } from "lucide-react"
+import { Phone, PhoneCall, Activity } from "lucide-react"
 
 interface TranscriptMessage {
   speaker: "user" | "ai"
@@ -20,16 +20,45 @@ interface LiveCall {
   startTime: Date
 }
 
+interface Stats {
+  daily: {
+    calls: number
+  }
+  monthly: {
+    calls: number
+  }
+  total: {
+    calls: number
+    appointments: number
+    activeAppointments: number
+    avgDuration: number // Still present in API, but not displayed here
+  }
+}
+
 export default function DashboardPage() {
   const [liveCall, setLiveCall] = useState<LiveCall | null>(null)
-  const [stats, setStats] = useState({
-    dailyCalls: 0,
-    activeCalls: 0,
-    totalDuration: 0,
-  })
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
 
   useEffect(() => {
+    // Fetch stats
+    const fetchStats = async () => {
+      try {
+        const response = await fetch("/api/stats")
+        const data = await response.json()
+        setStats(data)
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error)
+      } finally {
+        setLoadingStats(false)
+      }
+    }
+    fetchStats()
+
     // WebSocket connection for real-time updates
+    // NOTE: For production, you'll need a proper WebSocket server setup
+    // that's accessible from your Vercel deployment (e.g., a separate service).
+    // 'ws://localhost:8080' will only work locally.
     const ws = new WebSocket("ws://localhost:8080")
 
     ws.onmessage = (event) => {
@@ -45,12 +74,18 @@ export default function DashboardPage() {
   }, [])
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString("en-US", {
+    return new Date(date).toLocaleTimeString("en-US", {
       hour12: false,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     })
+  }
+
+  const displayStats = stats || {
+    daily: { calls: 0 },
+    monthly: { calls: 0 },
+    total: { calls: 0, appointments: 0, activeAppointments: 0, avgDuration: 0 },
   }
 
   return (
@@ -62,15 +97,15 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Today's Calls</CardTitle>
             <Phone className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">+2 from yesterday</p>
+            <div className="text-2xl font-bold">{loadingStats ? "..." : displayStats.daily.calls}</div>
+            <p className="text-xs text-muted-foreground">Calls today</p>
           </CardContent>
         </Card>
 
@@ -80,19 +115,8 @@ export default function DashboardPage() {
             <PhoneCall className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1</div>
-            <p className="text-xs text-muted-foreground">Currently in progress</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3:24</div>
-            <p className="text-xs text-muted-foreground">Minutes per call</p>
+            <div className="text-2xl font-bold">{loadingStats ? "..." : displayStats.total.activeAppointments}</div>
+            <p className="text-xs text-muted-foreground">Currently in progress (appointments)</p>
           </CardContent>
         </Card>
       </div>
@@ -102,7 +126,7 @@ export default function DashboardPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
+              <Activity className="h-5 w-5 text-green-500" />
               Live Call Transcript
             </CardTitle>
             {liveCall && (
