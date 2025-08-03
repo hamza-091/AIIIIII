@@ -228,81 +228,69 @@ export default function DoctorsPage() {
               <DialogDescription>Enter the details for the new doctor, including their availability.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Name
-                </Label>
-                <Input
-                  id="name"
-                  value={newDoctorName}
-                  onChange={(e) => setNewDoctorName(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="specialization" className="text-right">
-                  Specialization
-                </Label>
-                <Input
-                  id="specialization"
-                  value={newDoctorSpecialization}
-                  onChange={(e) => setNewDoctorSpecialization(e.target.value)}
-                  className="col-span-3"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={newDoctorName}
+                    onChange={(e) => setNewDoctorName(e.target.value)}
+                    placeholder="Doctor's Name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="specialization">Specialization</Label>
+                  <Input
+                    id="specialization"
+                    value={newDoctorSpecialization}
+                    onChange={(e) => setNewDoctorSpecialization(e.target.value)}
+                    placeholder="e.g., Cardiologist"
+                  />
+                </div>
               </div>
 
-              <div className="col-span-4 mt-4">
+              <div className="col-span-full mt-4">
                 <h3 className="text-lg font-medium mb-2">Available Slots</h3>
-                {newDoctorSlots.map((slot, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-center mb-2">
-                    <Label htmlFor={`day-${index}`} className="sr-only">
-                      Day
-                    </Label>
-                    <Select value={slot.day} onValueChange={(value) => handleSlotChange(index, "day", value)}>
-                      <SelectTrigger id={`day-${index}`} className="col-span-1">
-                        <SelectValue placeholder="Select Day" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DAYS_OF_WEEK.map((day) => (
-                          <SelectItem key={day} value={day}>
-                            {day}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Label htmlFor={`start-time-${index}`} className="sr-only">
-                      Start Time
-                    </Label>
-                    <Input
-                      id={`start-time-${index}`}
-                      type="time"
-                      value={slot.startTime}
-                      onChange={(e) => handleSlotChange(index, "startTime", e.target.value)}
-                      className="col-span-1"
-                    />
-                    <Label htmlFor={`end-time-${index}`} className="sr-only">
-                      End Time
-                    </Label>
-                    <Input
-                      id={`end-time-${index}`}
-                      type="time"
-                      value={slot.endTime}
-                      onChange={(e) => handleSlotChange(index, "endTime", e.target.value)}
-                      className="col-span-1"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveSlot(index)}
-                      className="col-span-1"
-                      disabled={newDoctorSlots.length === 1}
-                    >
-                      <X className="h-4 w-4" />
-                      <span className="sr-only">Remove slot</span>
-                    </Button>
-                  </div>
-                ))}
-                <Button variant="outline" size="sm" onClick={handleAddSlot} className="mt-2 bg-transparent">
+                <div className="space-y-3">
+                  {newDoctorSlots.map((slot, index) => (
+                    <div key={index} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+                      <Select value={slot.day} onValueChange={(value) => handleSlotChange(index, "day", value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DAYS_OF_WEEK.map((day) => (
+                            <SelectItem key={day} value={day}>
+                              {day}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="time"
+                        value={slot.startTime}
+                        onChange={(e) => handleSlotChange(index, "startTime", e.target.value)}
+                        className="w-full"
+                      />
+                      <Input
+                        type="time"
+                        value={slot.endTime}
+                        onChange={(e) => handleSlotChange(index, "endTime", e.target.value)}
+                        className="w-full"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveSlot(index)}
+                        disabled={newDoctorSlots.length === 1}
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Remove slot</span>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" onClick={handleAddSlot} className="mt-4 bg-transparent">
                   <Plus className="mr-2 h-4 w-4" /> Add Another Slot
                 </Button>
               </div>
