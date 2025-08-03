@@ -8,7 +8,8 @@ import Appointment from "@/lib/models/Appointment"
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
-const model = genAI.getGenerativeModel({ model: "gemini-pro" }) // Using gemini-pro for text-only
+// Changed model from "gemini-pro" to "gemini-1.0-pro" for better compatibility
+const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" }) // Using gemini-1.0-pro for text-only
 
 export async function POST(request: NextRequest) {
   await dbConnect()
