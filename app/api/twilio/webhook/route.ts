@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { VoiceResponse } from "twilio/lib/twiml/VoiceResponse"
+import twilio from "twilio"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import dbConnect from "@/lib/mongodb"
 import CallTranscript from "@/lib/models/CallTranscript"
@@ -13,7 +13,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-pro" }) // Using gemini-
 export async function POST(request: NextRequest) {
   await dbConnect()
 
-  const twiml = new VoiceResponse()
+  const twiml = new twilio.twiml.VoiceResponse()
   const body = new URLSearchParams(await request.text())
 
   const callSid = body.get("CallSid")
