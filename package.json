@@ -66,8 +66,7 @@
     "vaul": "^0.9.6",
     "ws": "latest",
     "zod": "^3.24.1",
-    "@twilio/twiml": "^3.4.0",
-    "@google/generative-ai": "^0.15.0"
+    "twilio": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
