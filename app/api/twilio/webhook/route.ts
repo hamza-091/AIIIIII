@@ -90,21 +90,26 @@ export async function POST(request: NextRequest) {
       ${conversationHistory}
       AI:`
 
+      console.log("DEBUG: Sending prompt to Gemini AI:", prompt)
       const result = await model.generateContent(prompt)
       const aiResponse = result.response.text()
-      console.log(`AI responded: ${aiResponse}`)
+      console.log("DEBUG: Raw AI response from Gemini:", aiResponse)
 
       callTranscript.transcript.push({ speaker: "ai", message: aiResponse, timestamp: new Date() })
 
-      // Check for appointment booking intent
+      console.log("DEBUG: Checking for appointment match with AI response.")
       const appointmentMatch = aiResponse.match(/^BOOK_APPOINTMENT:(.+):(.+):(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2})$/)
 
       if (appointmentMatch) {
         const [, doctorName, specialization, dateStr, timeStr] = appointmentMatch
+        console.log(
+          `DEBUG: Attempting to book appointment for Doctor: ${doctorName}, Specialization: ${specialization}, Date: ${dateStr}, Time: ${timeStr}`,
+        )
         try {
           const doctor = await Doctor.findOne({ name: doctorName, specialization: specialization })
 
           if (doctor) {
+            console.log("DEBUG: Doctor found, attempting to create appointment.")
             const appointmentDate = new Date(dateStr)
             const newAppointment = await Appointment.create({
               patientName: "Caller", // Placeholder, ideally get from user or Twilio
@@ -120,12 +125,13 @@ export async function POST(request: NextRequest) {
               `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${appointmentDate.toDateString()} at ${timeStr}. Is there anything else I can help you with?`,
             )
           } else {
+            console.log(`DEBUG: Doctor not found: ${doctorName}, ${specialization}`)
             twiml.say(
               `I'm sorry, I couldn't find a doctor named ${doctorName} with specialization ${specialization}. Please try again or ask for a different doctor.`,
             )
           }
         } catch (error) {
-          console.error("Error booking appointment:", error)
+          console.error("DEBUG: Error during appointment booking logic:", error)
           twiml.say("I apologize, there was an error booking your appointment. Please try again later.")
         }
       } else {
@@ -151,7 +157,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("Error in Twilio webhook:", error)
+    console.error("DEBUG: General error in Twilio webhook processing:", error)
     twiml.say("I apologize, an error occurred. Please try again later.")
   }
 
