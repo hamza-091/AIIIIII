@@ -28,13 +28,7 @@ export async function GET() {
       status: "scheduled",
     })
 
-    // Average call duration
-    const avgDurationResult = await CallTranscript.aggregate([
-      { $match: { status: "completed" } },
-      { $group: { _id: null, avgDuration: { $avg: "$duration" } } },
-    ])
-
-    const avgDuration = avgDurationResult[0]?.avgDuration || 0
+    // Removed avgDuration calculation as it's no longer displayed on frontend
 
     return NextResponse.json({
       daily: {
@@ -47,7 +41,7 @@ export async function GET() {
         calls: totalCalls,
         appointments: totalAppointments,
         activeAppointments,
-        avgDuration: Math.round(avgDuration),
+        avgDuration: 0, // Set to 0 or remove if not needed at all in the response
       },
     })
   } catch (error) {
