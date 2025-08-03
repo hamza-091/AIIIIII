@@ -3,380 +3,227 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { User, Clock, Calendar, Stethoscope, Plus, Trash2, X } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Phone, Clock, Activity } from "lucide-react"
 
-interface Doctor {
-  _id: string
-  name: string
-  specialization: string
-  availableSlots: Array<{
-    day: string
-    startTime: string
-    endTime: string
-  }>
-  isActive: boolean
+interface TranscriptMessage {
+  speaker: "user" | "ai"
+  message: string
+  timestamp: Date
 }
 
-interface AvailableSlot {
-  day: string
-  startTime: string
-  endTime: string
+interface LiveCall {
+  callId: string
+  fromNumber: string
+  toNumber: string
+  transcript: TranscriptMessage[]
+  status: "active" | "completed"
+  startTime: Date
 }
 
-const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+interface Stats {
+  daily: {
+    calls: number
+  }
+  monthly: {
+    calls: number
+  }
+  total: {
+    calls: number
+    appointments: number
+    activeAppointments: number
+    avgDuration: number
+  }
+}
 
-export default function DoctorsPage() {
-  const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [loading, setLoading] = useState(true)
-  const [newDoctorName, setNewDoctorName] = useState("")
-  const [newDoctorSpecialization, setNewDoctorSpecialization] = useState("")
-  const [newDoctorSlots, setNewDoctorSlots] = useState<AvailableSlot[]>([{ day: "", startTime: "", endTime: "" }])
-  const [isAddingDoctor, setIsAddingDoctor] = useState(false)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const { toast } = useToast()
+export default function DashboardPage() {
+  const [liveCall, setLiveCall] = useState<LiveCall | null>(null)
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [activeCallDuration, setActiveCallDuration] = useState(0)
 
   useEffect(() => {
-    fetchDoctors()
+    // Function to fetch stats
+    const fetchStats = async () => {
+      try {
+        const response = await fetch("/api/stats")
+        const data = await response.json()
+        setStats(data)
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error)
+      } finally {
+        setLoadingStats(false)
+      }
+    }
+
+    // Function to fetch live call
+    const fetchLiveCall = async () => {
+      try {
+        const response = await fetch("/api/calls/live")
+        if (response.ok) {
+          const data = await response.json()
+          setLiveCall(data)
+        } else {
+          setLiveCall(null) // No active call
+        }
+      } catch (error) {
+        console.error("Error fetching live call:", error)
+        setLiveCall(null)
+      }
+    }
+
+    // Initial fetch
+    fetchStats()
+    fetchLiveCall()
+
+    // Set up polling for live call updates (e.g., every 3 seconds)
+    const pollingInterval = setInterval(fetchLiveCall, 3000)
+
+    return () => {
+      clearInterval(pollingInterval)
+    }
   }, [])
 
-  const fetchDoctors = async () => {
-    setLoading(true)
-    try {
-      const response = await fetch("/api/doctors")
-      const data = await response.json()
-      setDoctors(data || [])
-    } catch (error) {
-      console.error("Error fetching doctors:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch doctors.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    let durationInterval: NodeJS.Timeout | null = null
+    if (liveCall && liveCall.status === "active") {
+      durationInterval = setInterval(() => {
+        setActiveCallDuration(Math.floor((Date.now() - new Date(liveCall.startTime).getTime()) / 1000))
+      }, 1000)
+    } else {
+      if (durationInterval) clearInterval(durationInterval)
+      setActiveCallDuration(0)
     }
-  }
-
-  const handleAddSlot = () => {
-    setNewDoctorSlots([...newDoctorSlots, { day: "", startTime: "", endTime: "" }])
-  }
-
-  const handleRemoveSlot = (index: number) => {
-    const updatedSlots = newDoctorSlots.filter((_, i) => i !== index)
-    setNewDoctorSlots(updatedSlots)
-  }
-
-  const handleSlotChange = (index: number, field: keyof AvailableSlot, value: string) => {
-    const updatedSlots = newDoctorSlots.map((slot, i) => (i === index ? { ...slot, [field]: value } : slot))
-    setNewDoctorSlots(updatedSlots)
-  }
-
-  const handleAddDoctor = async () => {
-    if (!newDoctorName || !newDoctorSpecialization) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in doctor's name and specialization.",
-        variant: "destructive",
-      })
-      return
+    return () => {
+      if (durationInterval) clearInterval(durationInterval)
     }
+  }, [liveCall])
 
-    // Validate slots
-    const invalidSlots = newDoctorSlots.some((slot) => !slot.day || !slot.startTime || !slot.endTime)
-    if (invalidSlots) {
-      toast({
-        title: "Validation Error",
-        description: "Please ensure all available slots have a day, start time, and end time.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsAddingDoctor(true)
-    try {
-      const response = await fetch("/api/doctors", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: newDoctorName,
-          specialization: newDoctorSpecialization,
-          availableSlots: newDoctorSlots,
-          isActive: true,
-        }),
-      })
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Doctor added successfully!",
-        })
-        setNewDoctorName("")
-        setNewDoctorSpecialization("")
-        setNewDoctorSlots([{ day: "", startTime: "", endTime: "" }]) // Reset slots
-        setIsDialogOpen(false) // Close dialog
-        fetchDoctors()
-      } else {
-        const errorData = await response.json()
-        toast({
-          title: "Error",
-          description: errorData.error || "Failed to add doctor.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error adding doctor:", error)
-      toast({
-        title: "Error",
-        description: "Network error. Failed to add doctor.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsAddingDoctor(false)
-    }
+  const formatTime = (date: Date) => {
+    return new Date(date).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
   }
 
-  const handleDeleteDoctor = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this doctor?")) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/doctors/${id}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Doctor deleted successfully!",
-        })
-        fetchDoctors()
-      } else {
-        const errorData = await response.json()
-        toast({
-          title: "Error",
-          description: errorData.error || "Failed to delete doctor.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error deleting doctor:", error)
-      toast({
-        title: "Error",
-        description: "Network error. Failed to delete doctor.",
-        variant: "destructive",
-      })
-    }
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  const formatTime = (time: string) => {
-    if (!time) return ""
-    const [hours, minutes] = time.split(":")
-    const hour = Number.parseInt(hours)
-    const ampm = hour >= 12 ? "PM" : "AM"
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:${minutes} ${ampm}`
-  }
-
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="animate-pulse space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
-                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
+  const displayStats = stats || {
+    daily: { calls: 0 },
+    monthly: { calls: 0 },
+    total: { calls: 0, appointments: 0, activeAppointments: 0, avgDuration: 0 },
   }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Doctors</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Doctor
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Add New Doctor</DialogTitle>
-              <DialogDescription>Enter the details for the new doctor, including their availability.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    value={newDoctorName}
-                    onChange={(e) => setNewDoctorName(e.target.value)}
-                    placeholder="Doctor's Name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialization">Specialization</Label>
-                  <Input
-                    id="specialization"
-                    value={newDoctorSpecialization}
-                    onChange={(e) => setNewDoctorSpecialization(e.target.value)}
-                    placeholder="e.g., Cardiologist"
-                  />
-                </div>
-              </div>
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">Handle Your Calls with AI</h1>
+        <p className="text-lg text-gray-600">Intelligent call management powered by Gemini AI</p>
+      </div>
 
-              <div className="col-span-full mt-4">
-                <h3 className="text-lg font-medium mb-2">Available Slots</h3>
-                <div className="space-y-3">
-                  {newDoctorSlots.map((slot, index) => (
-                    <div key={index} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
-                      <Select value={slot.day} onValueChange={(value) => handleSlotChange(index, "day", value)}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select Day" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DAYS_OF_WEEK.map((day) => (
-                            <SelectItem key={day} value={day}>
-                              {day}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="time"
-                        value={slot.startTime}
-                        onChange={(e) => handleSlotChange(index, "startTime", e.target.value)}
-                        className="w-full"
-                      />
-                      <Input
-                        type="time"
-                        value={slot.endTime}
-                        onChange={(e) => handleSlotChange(index, "endTime", e.target.value)}
-                        className="w-full"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveSlot(index)}
-                        disabled={newDoctorSlots.length === 1}
-                      >
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Remove slot</span>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="outline" size="sm" onClick={handleAddSlot} className="mt-4 bg-transparent">
-                  <Plus className="mr-2 h-4 w-4" /> Add Another Slot
-                </Button>
+      {/* Live Call Transcript */}
+      <Card className="col-span-full">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-green-500" />
+              Live Call Transcript
+            </CardTitle>
+            {liveCall && (
+              <Badge variant={liveCall.status === "active" ? "default" : "secondary"}>
+                {liveCall.status === "active" ? "Live" : "Completed"}
+              </Badge>
+            )}
+          </div>
+          {liveCall && (
+            <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
+              <div className="flex items-center gap-1">
+                <span className="font-medium">From:</span>
+                <span>{liveCall.fromNumber}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-medium">To:</span>
+                <span>{liveCall.toNumber}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-medium">Started:</span>
+                <span>{formatTime(liveCall.startTime)}</span>
               </div>
             </div>
-            <DialogFooter>
-              <Button type="submit" onClick={handleAddDoctor} disabled={isAddingDoctor}>
-                {isAddingDoctor ? "Adding..." : "Add Doctor"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {doctors.map((doctor) => (
-          <Card key={doctor._id} className="overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-600 p-3 rounded-full">
-                    <User className="h-6 w-6 text-white" />
+          )}
+        </CardHeader>
+        <CardContent>
+          {liveCall ? (
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {liveCall.transcript.map((message, index) => (
+                <div key={index} className={`flex ${message.speaker === "ai" ? "justify-start" : "justify-end"}`}>
+                  <div
+                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                      message.speaker === "ai" ? "bg-blue-100 text-blue-900" : "bg-gray-100 text-gray-900"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium">
+                        {message.speaker === "ai" ? "AI Assistant" : "Caller"}
+                      </span>
+                      <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
+                    </div>
+                    <p className="text-sm">{message.message}</p>
                   </div>
-                  <div>
-                    <CardTitle className="text-xl">{doctor.name}</CardTitle>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Stethoscope className="h-4 w-4 text-blue-600" />
-                      <span className="text-blue-700 font-medium">{doctor.specialization}</span>
+                </div>
+              ))}
+              {liveCall.status === "active" && (
+                <div className="flex justify-start">
+                  <div className="bg-blue-100 text-blue-900 px-4 py-2 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                      <span className="text-xs">AI is typing...</span>
                     </div>
                   </div>
                 </div>
-                <Button variant="destructive" size="icon" onClick={() => handleDeleteDoctor(doctor._id)}>
-                  <Trash2 className="h-4 w-4" />
-                  <span className="sr-only">Delete Doctor</span>
-                </Button>
-              </div>
-            </CardHeader>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No active calls at the moment</p>
+              <p className="text-sm">Live transcripts will appear here when calls are in progress</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Available Schedule
-                  </h4>
-                  <div className="space-y-2">
-                    {doctor.availableSlots.length > 0 ? (
-                      doctor.availableSlots.map((slot, index) => (
-                        <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="font-medium text-sm">{slot.day}</span>
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Clock className="h-3 w-3" />
-                            <span>
-                              {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">No available slots defined.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Status</span>
-                    <Badge variant={doctor.isActive ? "default" : "secondary"}>
-                      {doctor.isActive ? "Available" : "Unavailable"}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {doctors.length === 0 && (
-        <Card>
-          <CardContent className="text-center py-12">
-            <Stethoscope className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No doctors available</h3>
-            <p className="text-gray-600">Add new doctors using the "Add Doctor" button above.</p>
+      {/* Active Call Duration Card */}
+      <div className="flex justify-center">
+        <Card className="w-full max-w-xs md:max-w-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Call Duration</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {liveCall && liveCall.status === "active" ? formatDuration(activeCallDuration) : "0:00"}
+            </div>
+            <p className="text-xs text-muted-foreground">Current live call duration</p>
           </CardContent>
         </Card>
-      )}
+      </div>
     </div>
   )
 }
