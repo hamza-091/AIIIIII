@@ -15,7 +15,7 @@ interface Stats {
     calls: number
     appointments: number
     activeAppointments: number
-    avgDuration: number
+    avgDuration: number // Still present in API, but not displayed here
   }
 }
 
@@ -45,18 +45,12 @@ export default function StatsPage() {
     total: { calls: 0, appointments: 0, activeAppointments: 0, avgDuration: 0 },
   }
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
   if (loading) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
               <Card key={i}>
                 <CardContent className="p-6">
                   <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
@@ -78,7 +72,7 @@ export default function StatsPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Call Analytics</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Today's Calls</CardTitle>
@@ -86,7 +80,7 @@ export default function StatsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{displayStats.daily.calls}</div>
-              <p className="text-xs text-muted-foreground">+2 from yesterday</p>
+              <p className="text-xs text-muted-foreground">Calls today</p>
             </CardContent>
           </Card>
 
@@ -97,7 +91,7 @@ export default function StatsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{displayStats.monthly.calls}</div>
-              <p className="text-xs text-muted-foreground">+12% from last month</p>
+              <p className="text-xs text-muted-foreground">Calls this month</p>
             </CardContent>
           </Card>
 
@@ -111,17 +105,6 @@ export default function StatsPage() {
               <p className="text-xs text-muted-foreground">All time</p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatDuration(displayStats.total.avgDuration)}</div>
-              <p className="text-xs text-muted-foreground">Per call</p>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -129,7 +112,7 @@ export default function StatsPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Appointment Analytics</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Appointments</CardTitle>
@@ -148,18 +131,7 @@ export default function StatsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{displayStats.total.activeAppointments}</div>
-              <p className="text-xs text-muted-foreground">Scheduled</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">94%</div>
-              <p className="text-xs text-muted-foreground">Appointment completion</p>
+              <p className="text-xs text-muted-foreground">Currently scheduled</p>
             </CardContent>
           </Card>
         </div>
