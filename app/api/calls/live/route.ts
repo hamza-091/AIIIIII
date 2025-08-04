@@ -10,11 +10,11 @@ export async function GET() {
     const liveCall = await CallTranscript.findOne({ status: "active" }).sort({ startTime: -1 })
 
     if (!liveCall) {
-      console.log("DEBUG: No active call found, returning null.")
+      console.log("DEBUG (api/calls/live): No active call found, returning null.")
       return NextResponse.json(null, { status: 200 })
     }
 
-    console.log(`DEBUG: Found active call: ${liveCall.callId}, Status: ${liveCall.status}`)
+    console.log(`DEBUG (api/calls/live): Found active call: ${liveCall.callId}, Status: ${liveCall.status}`)
     return NextResponse.json(liveCall)
   } catch (error) {
     console.error("Error fetching live call:", error)
