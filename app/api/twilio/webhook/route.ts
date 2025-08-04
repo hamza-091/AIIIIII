@@ -66,7 +66,9 @@ export async function POST(request: NextRequest) {
         (callTranscript.endTime.getTime() - callTranscript.startTime.getTime()) / 1000,
       )
       await callTranscript.save()
-      console.log(`DEBUG: Call ${callSid} ended with status: ${callStatus}. Duration: ${callTranscript.duration}s`)
+      console.log(
+        `DEBUG: Call ${callSid} status updated to ${callTranscript.status}. Duration: ${callTranscript.duration}s`,
+      )
       return new NextResponse(twiml.toString(), {
         headers: { "Content-Type": "text/xml" },
       })
@@ -183,9 +185,6 @@ export async function POST(request: NextRequest) {
         // If AI response does not match booking format, just say the AI response
         twiml.say(aiResponse)
       }
-
-      // The transcript is already saved after AI response, no need to save again here
-      // await callTranscript.save()
 
       twiml.gather({
         input: "speech",
