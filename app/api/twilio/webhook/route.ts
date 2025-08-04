@@ -16,15 +16,17 @@ export async function POST(request: NextRequest) {
   const twiml = new twilio.twiml.VoiceResponse()
   const body = new URLSearchParams(await request.text())
 
+  // Log all incoming Twilio parameters for debugging
+  console.log("DEBUG (twilio/webhook): Incoming Twilio Webhook Body:")
+  for (const [key, value] of body.entries()) {
+    console.log(`  ${key}: ${value}`)
+  }
+
   const callSid = body.get("CallSid")
   const speechResult = body.get("SpeechResult")
   const callStatus = body.get("CallStatus") // Get the current call status from Twilio
   const fromNumber = body.get("From")
   const toNumber = body.get("To")
-
-  console.log(
-    `DEBUG: Webhook received for CallSid: ${callSid}, CallStatus: ${callStatus}, SpeechResult: ${speechResult}`,
-  )
 
   if (!callSid) {
     console.error("CallSid is missing from Twilio request.")
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
         startTime: new Date(),
         transcript: [],
       })
-      console.log(`New call started: ${callSid}`)
+      console.log(`DEBUG (twilio/webhook): New call started: ${callSid}`)
 
       twiml.say("Hello! Welcome to our AI medical assistant. How can I help you today?")
       twiml.gather({
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
       )
       await callTranscript.save()
       console.log(
-        `DEBUG: Call ${callSid} status updated to ${callTranscript.status}. Duration: ${callTranscript.duration}s`,
+        `DEBUG (twilio/webhook): Call ${callSid} status updated to ${callTranscript.status}. Duration: ${callTranscript.duration}s`,
       )
       return new NextResponse(twiml.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
       // User spoke, process with AI
       callTranscript.transcript.push({ speaker: "user", message: speechResult, timestamp: new Date() })
       await callTranscript.save() // Save user's message immediately
-      console.log(`User said: ${speechResult}`)
+      console.log(`DEBUG (twilio/webhook): User said: ${speechResult}`)
 
       // --- Fetch available doctors and format for AI prompt ---
       const doctors = await Doctor.find({ isActive: true })
@@ -117,27 +119,27 @@ export async function POST(request: NextRequest) {
       ${conversationHistory}
       AI:`
 
-      console.log("DEBUG: Sending prompt to Gemini AI.")
+      console.log("DEBUG (twilio/webhook): Sending prompt to Gemini AI.")
       let aiResponse: string
       try {
         const result = await model.generateContent(prompt)
         aiResponse = result.response.text()
-        console.log("DEBUG: Raw AI response from Gemini:", aiResponse)
+        console.log("DEBUG (twilio/webhook): Raw AI response from Gemini:", aiResponse)
       } catch (aiError) {
-        console.error("DEBUG: Error generating content from Gemini AI:", aiError)
+        console.error("DEBUG (twilio/webhook): Error generating content from Gemini AI:", aiError)
         aiResponse = "I apologize, I'm having trouble processing your request at the moment. Please try again."
       }
 
       callTranscript.transcript.push({ speaker: "ai", message: aiResponse, timestamp: new Date() })
       await callTranscript.save() // Save AI's message immediately
 
-      console.log("DEBUG: Checking for appointment match with AI response.")
+      console.log("DEBUG (twilio/webhook): Checking for appointment match with AI response.")
       const appointmentMatch = aiResponse.match(/^BOOK_APPOINTMENT:(.+):(.+):(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2})$/)
 
       if (appointmentMatch) {
         const [, doctorName, specialization, dateStr, timeStr] = appointmentMatch
         console.log(
-          `DEBUG: Attempting to book appointment for Doctor: ${doctorName}, Specialization: ${specialization}, Date: ${dateStr}, Time: ${timeStr}`,
+          `DEBUG (twilio/webhook): Attempting to book appointment for Doctor: ${doctorName}, Specialization: ${specialization}, Date: ${dateStr}, Time: ${timeStr}`,
         )
         try {
           const doctor = await Doctor.findOne({ name: doctorName, specialization: specialization })
@@ -151,7 +153,7 @@ export async function POST(request: NextRequest) {
             )
 
             if (isSlotAvailable) {
-              console.log("DEBUG: Doctor found and slot available, attempting to create appointment.")
+              console.log("DEBUG (twilio/webhook): Doctor found and slot available, attempting to create appointment.")
               const newAppointment = await Appointment.create({
                 patientName: "Caller", // Placeholder, ideally get from user or Twilio
                 patientPhone: fromNumber,
@@ -166,19 +168,21 @@ export async function POST(request: NextRequest) {
                 `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${requestedDate.toDateString()} at ${timeStr}. Is there anything else I can help you with?`,
               )
             } else {
-              console.log(`DEBUG: Requested slot not available for ${doctorName} on ${requestedDay} at ${timeStr}.`)
+              console.log(
+                `DEBUG (twilio/webhook): Requested slot not available for ${doctorName} on ${requestedDay} at ${timeStr}.`,
+              )
               twiml.say(
                 `I'm sorry, Dr. ${doctorName} is not available on ${requestedDay} at ${timeStr}. Please choose another time or day.`,
               )
             }
           } else {
-            console.log(`DEBUG: Doctor not found: ${doctorName}, ${specialization}`)
+            console.log(`DEBUG (twilio/webhook): Doctor not found: ${doctorName}, ${specialization}`)
             twiml.say(
               `I'm sorry, I couldn't find a doctor named ${doctorName} with specialization ${specialization}. Please try again or ask for a different doctor.`,
             )
           }
         } catch (bookingError) {
-          console.error("DEBUG: Error during appointment booking logic:", bookingError)
+          console.error("DEBUG (twilio/webhook): Error during appointment booking logic:", bookingError)
           twiml.say("I apologize, there was an error booking your appointment. Please try again later.")
         }
       } else {
@@ -203,7 +207,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("DEBUG: General error in Twilio webhook processing:", error)
+    console.error("DEBUG (twilio/webhook): General error in Twilio webhook processing:", error)
     twiml.say("I apologize, an error occurred. Please try again later.")
   }
 
