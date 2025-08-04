@@ -8,7 +8,6 @@ import Appointment from "@/lib/models/Appointment"
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
-// Changed model from "gemini-1.0-pro" to "gemini-1.5-flash" for better compatibility
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) // Using gemini-1.5-flash for text-only
 
 export async function POST(request: NextRequest) {
@@ -73,6 +72,19 @@ export async function POST(request: NextRequest) {
       await callTranscript.save()
       console.log(`User said: ${speechResult}`)
 
+      // --- Fetch available doctors and format for AI prompt ---
+      const doctors = await Doctor.find({ isActive: true })
+      const doctorInfo = doctors
+        .map((doc) => {
+          const slots = doc.availableSlots
+            .map((slot) => `${slot.day} from ${slot.startTime} to ${slot.endTime}`)
+            .join("; ")
+          return `- Dr. ${doc.name} (${doc.specialization}): Available ${slots}`
+        })
+        .join("\n")
+
+      const currentDate = new Date().toISOString().split("T")[0] // YYYY-MM-DD format
+
       // Construct conversation history for AI
       const conversationHistory = callTranscript.transcript
         .map((t) => `${t.speaker === "user" ? "User" : "AI"}: ${t.message}`)
@@ -80,10 +92,19 @@ export async function POST(request: NextRequest) {
 
       // AI Prompt - Instruct AI to identify appointment booking intent
       const prompt = `You are an AI medical assistant. Your goal is to help users with their medical queries and book appointments.
-      If the user asks to book an appointment, respond with the exact format:
+      Current Date: ${currentDate}
+
+      Available Doctors and their slots:
+      ${doctorInfo || "No doctors currently available."}
+
+      If the user asks to book an appointment, you MUST respond with the exact format:
       "BOOK_APPOINTMENT:DoctorName:Specialization:Date(YYYY-MM-DD):Time(HH:MM)"
-      For example: "BOOK_APPOINTMENT:Dr. Smith:Cardiologist:2025-10-26:14:00"
-      If you cannot determine all details, ask for clarification.
+      - Ensure the DoctorName and Specialization exactly match one of the available doctors.
+      - Ensure the Date is in YYYY-MM-DD format and Time is in HH:MM (24-hour) format.
+      - Only book if the requested date and time fall within the doctor's available slots.
+      - If you cannot determine all details (Doctor, Specialization, Date, Time), or if the requested slot is unavailable, you MUST ask for clarification or suggest available options.
+      - If the user asks for a date like "tomorrow", convert it to the actual YYYY-MM-DD based on the Current Date.
+
       Otherwise, respond naturally to their query.
 
       Current conversation:
@@ -91,9 +112,15 @@ export async function POST(request: NextRequest) {
       AI:`
 
       console.log("DEBUG: Sending prompt to Gemini AI:", prompt)
-      const result = await model.generateContent(prompt)
-      const aiResponse = result.response.text()
-      console.log("DEBUG: Raw AI response from Gemini:", aiResponse)
+      let aiResponse: string
+      try {
+        const result = await model.generateContent(prompt)
+        aiResponse = result.response.text()
+        console.log("DEBUG: Raw AI response from Gemini:", aiResponse)
+      } catch (aiError) {
+        console.error("DEBUG: Error generating content from Gemini AI:", aiError)
+        aiResponse = "I apologize, I'm having trouble processing your request at the moment. Please try again."
+      }
 
       callTranscript.transcript.push({ speaker: "ai", message: aiResponse, timestamp: new Date() })
 
@@ -109,32 +136,46 @@ export async function POST(request: NextRequest) {
           const doctor = await Doctor.findOne({ name: doctorName, specialization: specialization })
 
           if (doctor) {
-            console.log("DEBUG: Doctor found, attempting to create appointment.")
-            const appointmentDate = new Date(dateStr)
-            const newAppointment = await Appointment.create({
-              patientName: "Caller", // Placeholder, ideally get from user or Twilio
-              patientPhone: fromNumber,
-              doctorId: doctor._id,
-              appointmentDate: appointmentDate,
-              appointmentTime: timeStr,
-              status: "scheduled",
-              notes: `Booked via AI call (CallSid: ${callSid})`,
-              callId: callSid,
-            })
-            twiml.say(
-              `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${appointmentDate.toDateString()} at ${timeStr}. Is there anything else I can help you with?`,
+            // Basic slot validation (can be expanded for more robust checks)
+            const requestedDate = new Date(dateStr)
+            const requestedDay = requestedDate.toLocaleString("en-US", { weekday: "long" })
+            const isSlotAvailable = doctor.availableSlots.some(
+              (slot) => slot.day === requestedDay && timeStr >= slot.startTime && timeStr <= slot.endTime,
             )
+
+            if (isSlotAvailable) {
+              console.log("DEBUG: Doctor found and slot available, attempting to create appointment.")
+              const newAppointment = await Appointment.create({
+                patientName: "Caller", // Placeholder, ideally get from user or Twilio
+                patientPhone: fromNumber,
+                doctorId: doctor._id,
+                appointmentDate: requestedDate,
+                appointmentTime: timeStr,
+                status: "scheduled",
+                notes: `Booked via AI call (CallSid: ${callSid})`,
+                callId: callSid,
+              })
+              twiml.say(
+                `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${requestedDate.toDateString()} at ${timeStr}. Is there anything else I can help you with?`,
+              )
+            } else {
+              console.log(`DEBUG: Requested slot not available for ${doctorName} on ${requestedDay} at ${timeStr}.`)
+              twiml.say(
+                `I'm sorry, Dr. ${doctorName} is not available on ${requestedDay} at ${timeStr}. Please choose another time or day.`,
+              )
+            }
           } else {
             console.log(`DEBUG: Doctor not found: ${doctorName}, ${specialization}`)
             twiml.say(
               `I'm sorry, I couldn't find a doctor named ${doctorName} with specialization ${specialization}. Please try again or ask for a different doctor.`,
             )
           }
-        } catch (error) {
-          console.error("DEBUG: Error during appointment booking logic:", error)
+        } catch (bookingError) {
+          console.error("DEBUG: Error during appointment booking logic:", bookingError)
           twiml.say("I apologize, there was an error booking your appointment. Please try again later.")
         }
       } else {
+        // If AI response does not match booking format, just say the AI response
         twiml.say(aiResponse)
       }
 
