@@ -18,9 +18,13 @@ export async function POST(request: NextRequest) {
 
   const callSid = body.get("CallSid")
   const speechResult = body.get("SpeechResult")
-  const callStatus = body.get("CallStatus")
+  const callStatus = body.get("CallStatus") // Get the current call status from Twilio
   const fromNumber = body.get("From")
   const toNumber = body.get("To")
+
+  console.log(
+    `DEBUG: Webhook received for CallSid: ${callSid}, CallStatus: ${callStatus}, SpeechResult: ${speechResult}`,
+  )
 
   if (!callSid) {
     console.error("CallSid is missing from Twilio request.")
@@ -62,14 +66,14 @@ export async function POST(request: NextRequest) {
         (callTranscript.endTime.getTime() - callTranscript.startTime.getTime()) / 1000,
       )
       await callTranscript.save()
-      console.log(`Call ${callSid} ended with status: ${callStatus}`)
+      console.log(`DEBUG: Call ${callSid} ended with status: ${callStatus}. Duration: ${callTranscript.duration}s`)
       return new NextResponse(twiml.toString(), {
         headers: { "Content-Type": "text/xml" },
       })
     } else if (speechResult) {
       // User spoke, process with AI
       callTranscript.transcript.push({ speaker: "user", message: speechResult, timestamp: new Date() })
-      await callTranscript.save()
+      await callTranscript.save() // Save user's message immediately
       console.log(`User said: ${speechResult}`)
 
       // --- Fetch available doctors and format for AI prompt ---
@@ -111,7 +115,7 @@ export async function POST(request: NextRequest) {
       ${conversationHistory}
       AI:`
 
-      console.log("DEBUG: Sending prompt to Gemini AI:", prompt)
+      console.log("DEBUG: Sending prompt to Gemini AI.")
       let aiResponse: string
       try {
         const result = await model.generateContent(prompt)
@@ -123,6 +127,7 @@ export async function POST(request: NextRequest) {
       }
 
       callTranscript.transcript.push({ speaker: "ai", message: aiResponse, timestamp: new Date() })
+      await callTranscript.save() // Save AI's message immediately
 
       console.log("DEBUG: Checking for appointment match with AI response.")
       const appointmentMatch = aiResponse.match(/^BOOK_APPOINTMENT:(.+):(.+):(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2})$/)
@@ -179,7 +184,8 @@ export async function POST(request: NextRequest) {
         twiml.say(aiResponse)
       }
 
-      await callTranscript.save()
+      // The transcript is already saved after AI response, no need to save again here
+      // await callTranscript.save()
 
       twiml.gather({
         input: "speech",
