@@ -59,7 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
       console.log(`DEBUG (twilio/webhook): New call started: ${callSid}`)
 
-      twiml.say("Hello! Welcome to our AI medical assistant. How can I help you today?")
+      twiml.say("Hello! Welcome to our medical assistant. How can I help you today?")
       twiml.gather({
         input: "speech",
         timeout: 5,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ) {
       // This block is specifically for Twilio's "Call Status Changes" webhook
       console.log(`DEBUG (twilio/webhook): Received CallStatus webhook for ${callSid}: ${callStatus}`)
-      if (callTranscript.status === "active") {
+      if (callTranscript.status === "active") { // Only update if it was previously active
         callTranscript.status = callStatus
         callTranscript.endTime = new Date()
         callTranscript.duration = Math.floor(
@@ -93,9 +93,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
     } else if (speechResult) {
       // User spoke, process with AI
+      console.log(`DEBUG (twilio/webhook): Processing speechResult: "${speechResult}"`)
       callTranscript.transcript.push({ speaker: "user", message: speechResult, timestamp: new Date() })
       await callTranscript.save() // Save user's message immediately
-      console.log(`DEBUG (twilio/webhook): User said: "${speechResult}"`)
+      console.log(`DEBUG (twilio/webhook): User message saved to DB.`)
 
       // --- Fetch available doctors and format for AI prompt ---
       const doctors = await Doctor.find({ isActive: true })
@@ -112,26 +113,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       // Construct conversation history for AI
       const conversationHistory = callTranscript.transcript
-        .map((t) => `${t.speaker === "user" ? "User" : "AI"}: ${t.message}`)
+        .map((t) => `${t.speaker === "user" ? "User" : "Assistant"}: ${t.message}`) // Changed "AI" to "Assistant" for prompt
         .join("\n")
 
-      // AI Prompt - Instruct AI to identify appointment booking intent
-      let prompt = `You are an AI medical assistant. Your goal is to help users with their medical queries and book appointments.
+      // AI Prompt - Refined for natural conversation and data extraction
+      let prompt = `You are a helpful medical assistant. Your goal is to assist users with their medical queries and book appointments.
         Current Date: ${currentDate}
 
         Available Doctors and their slots:
         ${doctorInfo || "No doctors currently available."}
 
-        When providing doctor availability, use a natural, human-readable format like "9 AM to 5 PM" instead of "09:00 to 17:00".
+        When discussing doctor availability, use natural language like "9 AM to 5 PM" instead of "09:00 to 17:00".
 
-        If the user asks to book an appointment, you MUST first ask for the Doctor's Name, Specialization, Date, Time, Patient's Full Name, and Patient's Phone Number.
+        If the user wants to book an appointment, you need to gather the following information:
+        1. Preferred Doctor's Name (e.g., Dr. Hamza)
+        2. Doctor's Specialization (e.g., Cardiologist)
+        3. Desired Appointment Date (e.g., Tuesday, October 26th)
+        4. Desired Appointment Time (e.g., 2 PM)
+        5. Patient's Full Name
+        6. Patient's Phone Number
+
+        Ask for these details naturally. If you have some but not all, ask for the missing pieces.
         Once you have ALL these details, you MUST respond with the exact format:
         "BOOK_APPOINTMENT:DoctorName:Specialization:Date(YYYY-MM-DD):Time(HH:MM):PatientName:PatientPhone"
         - Ensure DoctorName and Specialization exactly match one of the available doctors.
         - Ensure Date is in YYYY-MM-DD format and Time is in HH:MM (24-hour) format.
         - Only book if the requested date and time fall within the doctor's available slots.
-        - If you cannot determine all details, or if the requested slot is unavailable, you MUST ask for clarification or suggest available options.
-        - If the user asks for a date like "tomorrow", convert it to the actual YYYY-MM-DD based on the Current Date.
+        - If a requested slot is unavailable, suggest available options or ask for a different time/day.
 
         If the user explicitly says "no", "nothing else", "that's all", "goodbye", or similar phrases indicating they want to end the call, you MUST respond with the exact format:
         "END_CALL:Polite closing message here." (e.g., "END_CALL:Thank you for calling, have a good day!")
@@ -140,11 +148,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         Current conversation:
         ${conversationHistory}
-        AI:`
+        Assistant:` // Changed "AI" to "Assistant" for prompt
 
       // If appointment was just booked, guide AI to ask "anything else?"
       if (callTranscript.appointmentBooked) {
-        prompt = `You are an AI medical assistant. An appointment has just been booked.
+        prompt = `You are a helpful medical assistant. An appointment has just been booked.
             Your current task is to ask the user if there's anything else they need.
             If the user explicitly says "no", "nothing else", "that's all", "goodbye", or similar phrases indicating they want to end the call, you MUST respond with the exact format:
             "END_CALL:Polite closing message here." (e.g., "END_CALL:Thank you for calling, have a good day!")
@@ -152,7 +160,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
             Current conversation:
             ${conversationHistory}
-            AI:`
+            Assistant:`
       }
 
       console.log("DEBUG (twilio/webhook): Sending prompt to Gemini AI.")
@@ -168,6 +176,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       callTranscript.transcript.push({ speaker: "ai", message: aiResponse, timestamp: new Date() })
       await callTranscript.save() // Save AI's message immediately
+      console.log(`DEBUG (twilio/webhook): AI message saved to DB.`)
 
       console.log("DEBUG (twilio/webhook): Checking for appointment match or end call command with AI response.")
       const appointmentMatch = aiResponse.match(/^BOOK_APPOINTMENT:(.+):(.+):(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2}):(.+):(.+)$/)
@@ -200,6 +209,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 notes: `Booked via AI call (CallSid: ${callSid})`,
                 callId: callSid,
               })
+              console.log(`DEBUG (twilio/webhook): Appointment created successfully: ${newAppointment._id}`)
 
               callTranscript.appointmentBooked = true; // Set flag after successful booking
               await callTranscript.save(); // Save the updated flag
