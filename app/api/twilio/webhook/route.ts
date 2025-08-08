@@ -122,6 +122,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         Available Doctors and their slots:
         ${doctorInfo || "No doctors currently available."}
 
+        When providing doctor availability, use a natural, human-readable format like "9 AM to 5 PM" instead of "09:00 to 17:00".
+
         If the user asks to book an appointment, you MUST first ask for the Doctor's Name, Specialization, Date, Time, Patient's Full Name, and Patient's Phone Number.
         Once you have ALL these details, you MUST respond with the exact format:
         "BOOK_APPOINTMENT:DoctorName:Specialization:Date(YYYY-MM-DD):Time(HH:MM):PatientName:PatientPhone"
