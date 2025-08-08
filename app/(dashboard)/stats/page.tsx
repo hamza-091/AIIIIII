@@ -153,7 +153,7 @@ export default function StatsPage() {
               <div className="space-y-3">
                 <div>
                   <h4 className="font-medium text-gray-700">Twilio Phone Number</h4>
-                  <p className="text-lg font-mono bg-gray-100 px-3 py-1 rounded">+19253784160</p>
+                  <p className="text-lg font-mono bg-gray-100 px-3 py-1 rounded">+12187723284</p>
                 </div>
 
                 <div>
