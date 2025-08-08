@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       callStatus === "failed" ||
       callStatus === "no-answer"
     ) {
-      // Call ended
+      // Call ended - This block should be hit when Twilio sends the 'Call status changes' webhook
       callTranscript.status = callStatus
       callTranscript.endTime = new Date()
       callTranscript.duration = Math.floor(
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       console.log(
         `DEBUG (twilio/webhook): Call ${callSid} status updated to ${callTranscript.status}. Duration: ${callTranscript.duration}s`,
       )
+      // No TwiML needed here, as the call is already ending/ended
       return new NextResponse(twiml.toString(), {
         headers: { "Content-Type": "text/xml" },
       })
@@ -165,8 +166,10 @@ export async function POST(request: NextRequest) {
                 callId: callSid,
               })
               twiml.say(
-                `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${requestedDate.toDateString()} at ${timeStr}. Is there anything else I can help you with?`,
+                `Okay, I have booked an appointment for you with ${doctor.name}, a ${doctor.specialization}, on ${requestedDate.toDateString()} at ${timeStr}.`,
               )
+              twiml.say("Is there anything else I can help you with? If not, goodbye.")
+              twiml.hangup() // Hang up after successful booking confirmation
             } else {
               console.log(
                 `DEBUG (twilio/webhook): Requested slot not available for ${doctorName} on ${requestedDay} at ${timeStr}.`,
@@ -174,28 +177,51 @@ export async function POST(request: NextRequest) {
               twiml.say(
                 `I'm sorry, Dr. ${doctorName} is not available on ${requestedDay} at ${timeStr}. Please choose another time or day.`,
               )
+              twiml.gather({
+                input: "speech",
+                timeout: 5,
+                action: `/api/twilio/webhook?callSid=${callSid}`,
+                method: "POST",
+              })
             }
           } else {
             console.log(`DEBUG (twilio/webhook): Doctor not found: ${doctorName}, ${specialization}`)
             twiml.say(
               `I'm sorry, I couldn't find a doctor named ${doctorName} with specialization ${specialization}. Please try again or ask for a different doctor.`,
             )
+            twiml.gather({
+              input: "speech",
+              timeout: 5,
+              action: `/api/twilio/webhook?callSid=${callSid}`,
+              method: "POST",
+            })
           }
         } catch (bookingError) {
           console.error("DEBUG (twilio/webhook): Error during appointment booking logic:", bookingError)
           twiml.say("I apologize, there was an error booking your appointment. Please try again later.")
+          twiml.gather({
+            input: "speech",
+            timeout: 5,
+            action: `/api/twilio/webhook?callSid=${callSid}`,
+            method: "POST",
+          })
         }
       } else {
         // If AI response does not match booking format, just say the AI response
         twiml.say(aiResponse)
+        // If AI says "welcome" or a final goodbye, hang up.
+        // This is a simple heuristic; a more robust solution might involve AI tool use or sentiment analysis.
+        if (aiResponse.toLowerCase().includes("welcome") || aiResponse.toLowerCase().includes("goodbye")) {
+          twiml.hangup()
+        } else {
+          twiml.gather({
+            input: "speech",
+            timeout: 5,
+            action: `/api/twilio/webhook?callSid=${callSid}`,
+            method: "POST",
+          })
+        }
       }
-
-      twiml.gather({
-        input: "speech",
-        timeout: 5,
-        action: `/api/twilio/webhook?callSid=${callSid}`,
-        method: "POST",
-      })
     } else {
       // No speech detected or other unhandled scenario, re-gather
       twiml.say("I didn't catch that. Could you please repeat?")
@@ -209,6 +235,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("DEBUG (twilio/webhook): General error in Twilio webhook processing:", error)
     twiml.say("I apologize, an error occurred. Please try again later.")
+    twiml.hangup() // Hang up on general errors to prevent infinite loops
   }
 
   return new NextResponse(twiml.toString(), {
